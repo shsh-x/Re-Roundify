@@ -22,7 +22,10 @@ namespace ReRoundify
 
         // === Constants ===
         private const int GWL_EXSTYLE = -20;
-        private const int WS_EX_TOOLWINDOW = 0x00000080;
+        private const int WS_EX_TOOLWINDOW = 0x00000080;   // Hides from Alt-Tab.
+        private const int WS_EX_TRANSPARENT = 0x00000020;  // Makes the window click-through.
+        private const int WS_EX_LAYERED = 0x00080000;     // The prerequisite style for transparency.
+
         private const uint EVENT_SYSTEM_FOREGROUND = 0x0003;
         private const uint WINEVENT_OUTOFCONTEXT = 0x0000;
         private static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
@@ -55,7 +58,9 @@ namespace ReRoundify
             
             var hWnd = new WindowInteropHelper(this).Handle;
             var extendedStyle = GetWindowLong(hWnd, GWL_EXSTYLE);
-            SetWindowLong(hWnd, GWL_EXSTYLE, extendedStyle | WS_EX_TOOLWINDOW);
+
+            SetWindowLong(hWnd, GWL_EXSTYLE, extendedStyle | WS_EX_LAYERED | WS_EX_TRANSPARENT | WS_EX_TOOLWINDOW);
+            
             _ourWindowHandles.Add(hWnd);
             
             ForceTopmost();
@@ -64,19 +69,11 @@ namespace ReRoundify
 
         public void WinEventProc(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime)
         {
-            // Check 1: Is the new window one of our own? If so, ignore to prevent feedback loops.
-            if (_ourWindowHandles.Contains(hwnd))
-            {
-                return;
-            }
+            if (_ourWindowHandles.Contains(hwnd)) return;
 
-            // Check 2: Is the new window on our ignore list (e.g., Alt-Tab)? If so, ignore.
             var sb = new StringBuilder(256);
             GetClassName(hwnd, sb, sb.Capacity);
-            if (_ignoreClassNames.Contains(sb.ToString()))
-            {
-                return;
-            }
+            if (_ignoreClassNames.Contains(sb.ToString())) return;
             
             // If it's a window we need to fight, start the reinforcement process.
             this.Dispatcher.BeginInvoke(new Action(StartReinforcement));
@@ -95,9 +92,7 @@ namespace ReRoundify
         {
             // Set a countdown. 150 ticks at 10ms = 1.5 seconds of reinforcement.
             _reinforcementTicksRemaining = 150; 
-            
             ForceTopmost();
-            
             _reinforcementTimer.Start();
         }
 
@@ -110,7 +105,7 @@ namespace ReRoundify
             }
             else
             {
-                _reinforcementTimer.Stop(); // Battle won. Go back to idle.
+                _reinforcementTimer.Stop();
             }
         }
         
